@@ -80,7 +80,7 @@ bool update_setting(int user_id, const char *index, const char *value) {
         return false;
 
     v = strtol(value, &endptr, 10);
-    if (*endptr || i >= SETTINGS_COUNT)
+    if (*endptr || i < 0 || i >= SETTINGS_COUNT) // reject negative indexes (out-of-bounds write)
         return false;
     accounts[user_id]->setting[i] = v;
     return true;

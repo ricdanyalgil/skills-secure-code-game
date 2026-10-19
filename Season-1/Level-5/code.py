@@ -3,7 +3,6 @@
 # This is the last level of our first season, good luck!
 
 import binascii
-import random
 import secrets
 import hashlib
 import os
@@ -17,12 +16,13 @@ class Random_generator:
     'abcdefghijklmnopqrstuvwxyz'
     'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     )):
-        return ''.join(random.choice(alphabet) for _ in range(length))
+        # secrets uses a CSPRNG; random is predictable (Mersenne Twister)
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
 
     # generates salt
     def generate_salt(self, rounds=12):
-        salt = ''.join(str(random.randint(0, 9)) for _ in range(21)) + '.'
-        return f'$2b${rounds}${salt}'.encode()
+        # let bcrypt create a proper random 128-bit salt
+        return bcrypt.gensalt(rounds)
 
 class SHA256_hasher:
 
@@ -51,8 +51,8 @@ class MD5_hasher:
 # a collection of sensitive secrets necessary for the software to operate
 PRIVATE_KEY = os.environ.get('PRIVATE_KEY')
 PUBLIC_KEY = os.environ.get('PUBLIC_KEY')
-SECRET_KEY = 'TjWnZr4u7x!A%D*G-KaPdSgVkXp2s5v8'
-PASSWORD_HASHER = 'MD5_hasher'
+SECRET_KEY = os.environ.get('SECRET_KEY')  # never hardcode secrets in source
+PASSWORD_HASHER = 'SHA256_hasher'  # MD5 is fast and broken; kept only for legacy verification
 
 
 # Contribute new levels to the game in 3 simple steps!

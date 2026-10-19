@@ -9,12 +9,23 @@ If you like to return to the initial state of the database, please delete the da
 the tests.py again to recreate it.
 '''
 
+import re
 import sqlite3
 import os
 from flask import Flask, request
 
 ### Unrelated to the exercise -- Starts here -- Please ignore
 app = Flask(__name__)
+
+def clean_symbol(symbol):
+    # allowlist: a ticker is letters/digits/dots; anything after the first other char is dropped
+    m = re.match(r"[A-Za-z0-9.]+", symbol or "")
+    return m.group(0) if m else ""
+
+def is_read_only(statement):
+    # only single SELECT statements may be run from user-supplied SQL
+    return re.match(r"(?is)^\s*select\b", statement) is not None and ';' not in statement
+
 @app.route("/")
 def source():
     DB_CRUD_ops().get_stock_info(request.args["input"])
@@ -89,6 +100,7 @@ class DB_CRUD_ops(object):
             cur = db_con.cursor()
 
             res = "[METHOD EXECUTED] get_stock_info\n"
+            # display string only; execution below uses a parameterized query
             query = "SELECT * FROM stocks WHERE symbol = '{0}'".format(stock_symbol)
             res += "[QUERY] " + query + "\n"
 
@@ -133,16 +145,13 @@ class DB_CRUD_ops(object):
             cur = db_con.cursor()
 
             res = "[METHOD EXECUTED] get_stock_price\n"
+            stock_symbol = clean_symbol(stock_symbol)
             query = "SELECT price FROM stocks WHERE symbol = '" + stock_symbol + "'"
             res += "[QUERY] " + query + "\n"
-            if ';' in query:
-                res += "[SCRIPT EXECUTION]\n"
-                cur.executescript(query)
-            else:
-                cur.execute(query)
-                query_outcome = cur.fetchall()
-                for result in query_outcome:
-                    res += "[RESULT] " + str(result) + "\n"
+            cur.execute("SELECT price FROM stocks WHERE symbol = ?", (stock_symbol,))
+            query_outcome = cur.fetchall()
+            for result in query_outcome:
+                res += "[RESULT] " + str(result) + "\n"
             return res
 
         except sqlite3.Error as e:
@@ -151,7 +160,6 @@ class DB_CRUD_ops(object):
         finally:
             db_con.close()
 
-    # updates stock price
     def update_stock_price(self, stock_symbol, price):
         # building database from scratch as it is more suitable for the purpose of the lab
         db = Create()
@@ -170,7 +178,7 @@ class DB_CRUD_ops(object):
             query = "UPDATE stocks SET price = '%d' WHERE symbol = '%s'" % (price, stock_symbol)
             res += "[QUERY] " + query + "\n"
 
-            cur.execute(query)
+            cur.execute("UPDATE stocks SET price = ? WHERE symbol = ?", (int(price), stock_symbol))
             db_con.commit()
             query_outcome = cur.fetchall()
             for result in query_outcome:
@@ -201,6 +209,9 @@ class DB_CRUD_ops(object):
             for query in filter(None, query.split(';')):
                 res += "[QUERY]" + query + "\n"
                 query = query.strip()
+                if not is_read_only(query):
+                    res += "[REJECTED] only SELECT statements are allowed\n"
+                    continue
                 cur.execute(query)
                 db_con.commit()
 
@@ -230,10 +241,9 @@ class DB_CRUD_ops(object):
 
             res = "[METHOD EXECUTED] exec_user_script\n"
             res += "[QUERY] " + query + "\n"
-            if ';' in query:
-                res += "[SCRIPT EXECUTION]"
-                cur.executescript(query)
-                db_con.commit()
+            if not is_read_only(query):
+                # never run user-supplied scripts (executescript runs anything)
+                res += "[REJECTED] only single SELECT statements are allowed"
             else:
                 cur.execute(query)
                 db_con.commit()
